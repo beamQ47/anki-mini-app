@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="uk" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Anki Gemini Assistant</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            telegram: {
+              bg: 'var(--app-bg)',
+              surface: 'var(--app-secondary-bg)',
+              text: 'var(--app-text)',
+              hint: 'var(--app-hint)',
+              link: 'var(--app-link)',
+              button: 'var(--app-button)',
+              'button-text': 'var(--app-button-text)'
+            }
+          },
+          boxShadow: {
+            soft: '0 18px 50px rgba(15, 23, 42, 0.10)',
+            card: '0 14px 36px rgba(15, 23, 42, 0.12)'
+          }
+        }
+      }
+    };
+  </script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app" class="flex h-full w-full overflow-hidden bg-telegram-bg text-telegram-text">
+    <div id="drawerBackdrop" class="fixed inset-0 z-40 hidden bg-slate-950/45 backdrop-blur-[2px] md:hidden" aria-hidden="true"></div>
+
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 flex w-[min(90vw,360px)] -translate-x-full flex-col border-r surface bg-telegram-surface shadow-soft transition-transform duration-300 ease-out md:relative md:z-20 md:w-[340px] md:translate-x-0 desktop-shadow" aria-label="Редактор колод">
+      <div class="safe-top safe-left safe-right border-b border-telegram-hint/10 px-4 pb-4">
+        <div class="flex items-center gap-3">
+          <div class="ai-gradient flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white shadow-lg shadow-violet-500/20">
+            <i data-lucide="layers-3" class="h-5 w-5" aria-hidden="true"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-[15px] font-extrabold tracking-tight">Anki Gemini</p>
+            <p class="text-xs font-medium text-telegram-hint">Deck workspace</p>
+          </div>
+          <button id="closeSidebarButton" class="icon-button md:hidden" type="button" aria-label="Закрити меню">
+            <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <div class="mt-4 flex items-center gap-3 rounded-2xl muted-surface border p-3">
+          <div class="relative shrink-0">
+            <div id="sidebarAvatarFallback" class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-500 to-blue-500 text-sm font-bold text-white">TG</div>
+            <img id="sidebarAvatar" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="hidden h-10 w-10 rounded-full object-cover" alt="Аватар користувача" referrerpolicy="no-referrer">
+            <span class="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-telegram-surface bg-emerald-500"></span>
+          </div>
+          <div class="min-w-0">
+            <p id="sidebarUserName" class="truncate text-sm font-bold">Telegram-користувач</p>
+            <p id="sidebarUsername" class="truncate text-xs text-telegram-hint">@anki_user</p>
+          </div>
+        </div>
+
+        <button id="myDecksButton" class="primary-button mt-3 flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-bold shadow-sm transition hover:brightness-95" type="button">
+          <span class="flex items-center gap-2.5">
+            <i data-lucide="library-big" class="h-5 w-5" aria-hidden="true"></i>
+            Мої колоди Anki
+          </span>
+          <i data-lucide="chevron-right" class="h-4 w-4" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <div class="safe-left safe-right min-h-0 flex-1 overflow-y-auto scroll-area">
+        <section id="deckListPanel" class="px-4 py-5">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-sm font-extrabold">Ваші колоди</h2>
+              <p id="deckSummary" class="mt-0.5 text-xs text-telegram-hint">0 карток у 0 колодах</p>
+            </div>
+            <button id="addDeckButton" class="icon-button" type="button" aria-label="Створити колоду" title="Створити колоду">
+              <i data-lucide="plus" class="h-5 w-5" aria-hidden="true"></i>
+            </button>
+          </div>
+          <div id="deckList" class="space-y-3"></div>
+          <div id="emptyDecksState" class="hidden rounded-2xl border border-dashed p-6 text-center muted-surface border-telegram-hint/30">
+            <div class="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-telegram-button/10 text-telegram-button">
+              <i data-lucide="library" class="h-5 w-5" aria-hidden="true"></i>
+            </div>
+            <p class="mt-3 text-sm font-bold">Ще немає колод</p>
+            <p class="mt-1 text-xs text-telegram-hint">Створіть першу колоду або збережіть картки з чату.</p>
+          </div>
+        </section>
+
+        <section id="editorPanel" class="hidden px-4 py-5" aria-label="Редактор картки">
+          <button id="editorBackButton" class="ghost-button mb-4 flex items-center gap-2 rounded-xl px-2 py-2 text-sm font-bold" type="button">
+            <i data-lucide="arrow-left" class="h-4 w-4" aria-hidden="true"></i>
+            До колод
+          </button>
+
+          <div class="rounded-2xl border border-telegram-link/25 bg-telegram-link/5 p-4">
+            <div class="flex items-start gap-3">
+              <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-telegram-link/12 text-telegram-button">
+                <i data-lucide="square-pen" class="h-5 w-5" aria-hidden="true"></i>
+              </div>
+              <div class="min-w-0 flex-1">
+                <p class="text-[11px] font-bold uppercase tracking-wider text-telegram-button">Редактор колоди</p>
+                <h2 id="editorDeckTitle" class="mt-0.5 truncate text-base font-extrabold">Колода</h2>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-5 flex items-center gap-2">
+            <button id="previousCardButton" class="icon-button border muted-surface border-telegram-hint/10" type="button" aria-label="Попередня картка">
+              <i data-lucide="chevron-left" class="h-5 w-5" aria-hidden="true"></i>
+            </button>
+            <label class="min-w-0 flex-1">
+              <span class="sr-only">Обрати картку</span>
+              <select id="editorCardSelect" class="w-full appearance-none rounded-xl border muted-surface border-telegram-hint/10 bg-telegram-bg px-3 py-2.5 text-sm font-semibold text-telegram-text"></select>
+            </label>
+            <button id="nextCardButton" class="icon-button border muted-surface border-telegram-hint/10" type="button" aria-label="Наступна картка">
+              <i data-lucide="chevron-right" class="h-5 w-5" aria-hidden="true"></i>
+            </button>
+          </div>
+
+          <div class="mt-3 flex items-center justify-between text-xs text-telegram-hint">
+            <span id="editorCardPosition">Картка 1 з 1</span>
+            <span id="editorSavedState" class="flex items-center gap-1.5">
+              <i data-lucide="cloud-check" class="h-3.5 w-3.5" aria-hidden="true"></i>
+              Збережено
+            </span>
+          </div>
+
+          <div class="mt-5 space-y-4">
+            <label class="block">
+              <span class="mb-1.5 flex items-center gap-2 text-xs font-bold">
+                <i data-lucide="circle-dot" class="h-3.5 w-3.5 text-telegram-button" aria-hidden="true"></i>
+                Front · запитання
+              </span>
+              <textarea id="editorFront" class="field-control min-h-24" placeholder="Введіть питання"></textarea>
+            </label>
+
+            <label class="block">
+              <span class="mb-1.5 flex items-center gap-2 text-xs font-bold">
+                <i data-lucide="circle-check" class="h-3.5 w-3.5 text-emerald-500" aria-hidden="true"></i>
+                Back · відповідь
+              </span>
+              <textarea id="editorBack" class="field-control min-h-28" placeholder="Введіть відповідь"></textarea>
+            </label>
+
+            <label class="block">
+              <span class="mb-1.5 flex items-center gap-2 text-xs font-bold">
+                <i data-lucide="notebook-tabs" class="h-3.5 w-3.5 text-violet-500" aria-hidden="true"></i>
+                Додатково
+              </span>
+              <textarea id="editorExtra" class="field-control min-h-20" placeholder="Нотатки, підказки або джерела"></textarea>
+            </label>
+
+            <label class="block">
+              <span class="mb-1.5 flex items-center gap-2 text-xs font-bold">
+                <i data-lucide="braces" class="h-3.5 w-3.5 text-sky-500" aria-hidden="true"></i>
+                CSS-стилі моделі
+              </span>
+              <textarea id="editorModelCss" class="field-control min-h-28 font-mono text-xs" spellcheck="false" placeholder=".card {\n  font-family: sans-serif;\n}"></textarea>
+            </label>
+          </div>
+
+          <div class="mt-5 grid grid-cols-2 gap-2">
+            <button id="saveCardButton" class="primary-button flex items-center justify-center gap-2 rounded-xl px-3 py-3 text-sm font-bold" type="button">
+              <i data-lucide="save" class="h-4 w-4" aria-hidden="true"></i>
+              Зберегти
+            </button>
+            <button id="addCardButton" class="ghost-button flex items-center justify-center gap-2 rounded-xl border muted-surface border-telegram-hint/10 px-3 py-3 text-sm font-bold" type="button">
+              <i data-lucide="plus" class="h-4 w-4" aria-hidden="true"></i>
+              Нова картка
+            </button>
+          </div>
+          <button id="deleteCardButton" class="mt-3 flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-500 transition hover:bg-red-500/10" type="button">
+            <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+            Видалити картку
+          </button>
+        </section>
+      </div>
+
+      <div class="safe-left safe-right border-t border-telegram-hint/10 px-4 py-3">
+        <div class="flex items-center gap-2 text-[11px] font-medium text-telegram-hint">
+          <span id="storageStatusDot" class="h-2 w-2 rounded-full bg-emerald-500"></span>
+          <span id="storageStatusText">Дані збережено локально</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="relative flex min-w-0 flex-1 flex-col bg-telegram-bg">
+      <header class="safe-top safe-left safe-right z-20 flex min-h-[var(--header-height)] shrink-0 items-center gap-3 border-b border-telegram-hint/10 bg-telegram-bg/95 px-3 backdrop-blur-xl sm:px-5">
+        <button id="openSidebarButton" class="icon-button -ml-1 md:hidden" type="button" aria-label="Відкрити меню">
+          <i data-lucide="menu" class="h-6 w-6" aria-hidden="true"></i>
+        </button>
+
+        <div class="ai-gradient flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-white shadow-lg shadow-violet-500/20 sm:h-11 sm:w-11">
+          <i data-lucide="sparkles" class="h-5 w-5" aria-hidden="true"></i>
+        </div>
+
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <h1 class="truncate text-sm font-extrabold tracking-tight sm:text-base">Anki Gemini Assistant</h1>
+            <span class="hidden rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-emerald-500 sm:inline-flex">AI</span>
+          </div>
+          <p class="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-telegram-hint">
+            <span class="relative flex h-2 w-2">
+              <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60"></span>
+              <span class="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+            </span>
+            Online · готовий допомагати
+          </p>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <div class="hidden text-right sm:block">
+            <p id="headerUserName" class="max-w-36 truncate text-xs font-bold">Telegram-користувач</p>
+            <p class="text-[10px] text-telegram-hint">Ваш AI-настрійник</p>
+          </div>
+          <div class="relative shrink-0">
+            <div id="headerAvatarFallback" class="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-violet-500 to-blue-500 text-xs font-bold text-white">TG</div>
+            <img id="headerAvatar" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" class="hidden h-9 w-9 rounded-full object-cover" alt="Аватар користувача" referrerpolicy="no-referrer">
+          </div>
+        </div>
+      </header>
+
+      <section id="messages" class="scroll-area min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-6 sm:py-7" aria-live="polite" aria-label="Повідомлення чату"></section>
+
+      <footer class="safe-bottom safe-left safe-right z-10 shrink-0 border-t border-telegram-hint/10 bg-telegram-bg/95 px-3 pt-3 backdrop-blur-xl sm:px-5">
+        <div id="attachmentPreview" class="mx-auto mb-2 hidden max-w-4xl items-center gap-3 rounded-2xl border border-telegram-link/20 bg-telegram-link/5 px-3 py-2">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-telegram-link/10 text-telegram-button">
+            <i data-lucide="file-text" class="h-4 w-4" aria-hidden="true"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <p id="attachmentName" class="truncate text-xs font-bold"></p>
+            <p id="attachmentSize" class="text-[10px] text-telegram-hint"></p>
+          </div>
+          <button id="removeAttachmentButton" class="icon-button h-8 w-8" type="button" aria-label="Прибрати файл">
+            <i data-lucide="x" class="h-4 w-4" aria-hidden="true"></i>
+          </button>
+        </div>
+
+        <form id="chatForm" class="mx-auto flex max-w-4xl items-end gap-2 rounded-[1.35rem] border border-telegram-hint/10 bg-telegram-surface p-2 shadow-soft">
+          <input id="fileInput" class="hidden" type="file" accept=".txt,.pdf,.docx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+          <button id="attachButton" class="icon-button mb-0.5 shrink-0" type="button" aria-label="Прикріпити документ" title="Прикріпити .txt, .pdf або .docx">
+            <i data-lucide="paperclip" class="h-5 w-5" aria-hidden="true"></i>
+          </button>
+          <label class="flex min-w-0 flex-1 items-center">
+            <span class="sr-only">Повідомлення</span>
+            <textarea id="messageInput" class="max-h-40 min-h-[2.75rem] w-full resize-none bg-transparent px-1 py-2.5 text-sm leading-6 text-telegram-text outline-none placeholder:text-telegram-hint" rows="1" maxlength="6000" placeholder="Поставте запитання або попросіть створити картки…"></textarea>
+          </label>
+          <button id="sendButton" class="primary-button mb-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl shadow-sm transition" type="submit" aria-label="Надіслати" disabled>
+            <i data-lucide="send-horizontal" class="h-5 w-5" aria-hidden="true"></i>
+          </button>
+        </form>
+        <p class="mx-auto mt-2 hidden max-w-4xl text-center text-[10px] text-telegram-hint sm:block">Натисніть Enter для відправки · Shift + Enter для нового рядка</p>
+      </footer>
+    </main>
+  </div>
+
+  <div id="deckModal" class="fixed inset-0 z-[80] hidden items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="deckModalTitle">
+    <div class="modal-enter safe-top safe-bottom max-h-full w-full max-w-lg overflow-y-auto rounded-3xl border surface bg-telegram-surface p-5 shadow-soft scroll-area sm:p-6">
+      <div class="flex items-start gap-3">
+        <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-telegram-link/10 text-telegram-button">
+          <i data-lucide="library-big" class="h-5 w-5" aria-hidden="true"></i>
+        </div>
+        <div class="min-w-0 flex-1">
+          <h2 id="deckModalTitle" class="text-lg font-extrabold">Створити нову колоду</h2>
+          <p id="deckModalDescription" class="mt-1 text-sm leading-5 text-telegram-hint">Додайте назву для нової колоди.</p>
+        </div>
+        <button id="closeDeckModalButton" class="icon-button -mr-2 -mt-2" type="button" aria-label="Закрити">
+          <i data-lucide="x" class="h-5 w-5" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <div id="saveDeckOptionsWrap" class="mt-5 hidden">
+        <p class="mb-2 text-xs font-bold text-telegram-hint">Оберіть наявну колоду</p>
+        <div id="saveDeckOptions" class="grid max-h-52 gap-2 overflow-y-auto scroll-area pr-1"></div>
+      </div>
+
+      <label id="newDeckFieldWrap" class="mt-5 block">
+        <span class="mb-1.5 block text-xs font-bold text-telegram-hint">Назва нової колоди</span>
+        <input id="newDeckName" class="field-control" type="text" maxlength="80" placeholder="Наприклад, Основи JavaScript" autocomplete="off">
+      </label>
+
+      <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button id="cancelDeckModalButton" class="ghost-button rounded-xl border muted-surface border-telegram-hint/10 px-4 py-3 text-sm font-bold" type="button">Скасувати</button>
+        <button id="confirmDeckModalButton" class="primary-button flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold disabled:opacity-50" type="button">
+          <i data-lucide="check" class="h-4 w-4" aria-hidden="true"></i>
+          <span id="confirmDeckModalText">Створити</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="confirmModal" class="fixed inset-0 z-[90] hidden items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
+    <div class="modal-enter w-full max-w-sm rounded-3xl border surface bg-telegram-surface p-5 shadow-soft">
+      <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-500/10 text-red-500">
+        <i data-lucide="triangle-alert" class="h-5 w-5" aria-hidden="true"></i>
+      </div>
+      <h2 id="confirmModalTitle" class="mt-4 text-lg font-extrabold">Підтвердіть дію</h2>
+      <p id="confirmModalText" class="mt-2 text-sm leading-6 text-telegram-hint"></p>
+      <div class="mt-6 grid grid-cols-2 gap-2">
+        <button id="cancelConfirmButton" class="ghost-button rounded-xl border muted-surface border-telegram-hint/10 px-4 py-3 text-sm font-bold" type="button">Скасувати</button>
+        <button id="acceptConfirmButton" class="flex items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-red-600" type="button">
+          <i data-lucide="trash-2" class="h-4 w-4" aria-hidden="true"></i>
+          Видалити
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast fixed left-1/2 top-4 z-[100] flex max-w-[calc(100vw-2rem)] items-center gap-2 rounded-2xl border surface bg-telegram-surface px-4 py-3 text-sm font-semibold shadow-soft" role="status" aria-live="polite">
+    <i id="toastIcon" data-lucide="check-circle-2" class="h-4 w-4 shrink-0 text-emerald-500" aria-hidden="true"></i>
+    <span id="toastText"></span>
+  </div>
+
+  <script src="js/telegram.js"></script>
+  <script src="js/decks.js"></script>
+  <script src="js/chat.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
