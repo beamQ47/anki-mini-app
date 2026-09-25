@@ -1,6 +1,9 @@
 const tg = window.Telegram.WebApp;
 tg.ready();
 tg.expand();
+tg.enableClosingConfirmation();
+tg.setHeaderColor('secondary_bg_color');
+tg.setBackgroundColor('bg_color');
 
 function setTelegramUser() {
   const user = tg.initDataUnsafe && tg.initDataUnsafe.user;
@@ -38,12 +41,6 @@ function setTelegramUser() {
       image.src = user.photo_url;
     });
   }
-  try {
-    tg.setHeaderColor('secondary_bg_color');
-    tg.setBackgroundColor('bg_color');
-  } catch (error) {
-    return;
-  }
 }
 
 function haptic(type = 'light') {
@@ -55,6 +52,23 @@ function haptic(type = 'light') {
   }
 }
 
+function syncViewport() {
+  const candidates = [
+    Number(tg.viewportHeight),
+    Number(window.visualViewport?.height),
+    Number(window.innerHeight)
+  ].filter(value => Number.isFinite(value) && value > 0);
+  const viewportHeight = Math.round(Math.min(...candidates));
+  if (viewportHeight > 0) {
+    document.documentElement.style.setProperty('--app-height', `${viewportHeight}px`);
+  }
+  updateMessageInput();
+  window.requestAnimationFrame(() => {
+    if (!elements.messages) return;
+    elements.messages.scrollTo({ top: elements.messages.scrollHeight, behavior: 'auto' });
+  });
+}
+
 function registerTelegramEvents() {
   if (tg.BackButton) {
     tg.BackButton.onClick(handleBack);
@@ -64,7 +78,23 @@ function registerTelegramEvents() {
     refreshIcons();
   });
 
-  tg.onEvent('viewportChanged', () => {
-    updateMessageInput();
+  tg.onEvent('viewportChanged', syncViewport);
+
+  const visualViewport = window.visualViewport;
+  if (visualViewport) {
+    visualViewport.addEventListener('resize', syncViewport);
+    visualViewport.addEventListener('scroll', syncViewport);
+  }
+  window.addEventListener('resize', syncViewport);
+  window.addEventListener('orientationchange', () => {
+    window.setTimeout(syncViewport, 100);
   });
+  window.addEventListener('focusin', event => {
+    if (event.target === elements.messageInput) {
+      syncViewport();
+      window.setTimeout(syncViewport, 250);
+    }
+  });
+
+  syncViewport();
 }
